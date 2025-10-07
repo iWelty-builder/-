@@ -71,7 +71,6 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         String key = CACHE_SHOP_KEY + id;
 
         String shopJson = stringRedisTemplate.opsForValue().get(key);
-
         if (!StrUtil.isBlank(shopJson)) {
             return JSONUtil.toBean(shopJson, Shop.class);
         }
