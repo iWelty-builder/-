@@ -35,14 +35,18 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     private StringRedisTemplate stringRedisTemplate;
 
     @Override
-    public Result queryById(Long id) {
+    public Result queryById(Long id) throws InterruptedException {
 
-        Shop shop = queryWithPenetration(id);
+        Shop shop = queryWithBreakDown(id);
+
+        if (shop == null){
+            return Result.fail("SHOP IS NOT EXIST");
+        }
 
         return Result.ok(shop);
     }
 
-    public Shop queryWithPenetration(Long id){
+    public Shop queryWithPenetration(Long id) throws InterruptedException {
         String key = CACHE_SHOP_KEY + id;
 
         String shopJson = stringRedisTemplate.opsForValue().get(key);
@@ -56,6 +60,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         }
 
         Shop byId = getById(id);
+
 
         if (byId == null) {
             stringRedisTemplate.opsForValue().set(key,"",CACHE_NULL_TTL,TimeUnit.MINUTES);
@@ -75,28 +80,34 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             return JSONUtil.toBean(shopJson, Shop.class);
         }
 
-        if (shopJson != null){
+        if (shopJson != null) {
             return null;
         }
 
         String lockKey = "lock:shop:" + id;
 
-        boolean triedLock = tryLock(lockKey);
-        if (!triedLock){
-            Thread.sleep(50);
-            return queryWithBreakDown(id);
+        Shop byId;
+        try {
+            boolean triedLock = tryLock(lockKey);
+
+            if (!triedLock) {
+                Thread.sleep(50);
+                return queryWithBreakDown(id);
+            }
+
+            byId = getById(id);
+
+            if (byId == null) {
+                stringRedisTemplate.opsForValue().set(key, "", CACHE_NULL_TTL, TimeUnit.MINUTES);
+                return null;
+            }
+
+            stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(byId), CACHE_SHOP_TTL, TimeUnit.MINUTES);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } finally {
+            unLock(lockKey);
         }
-
-        Shop byId = getById(id);
-
-        if (byId == null) {
-            stringRedisTemplate.opsForValue().set(key,"",CACHE_NULL_TTL,TimeUnit.MINUTES);
-            return null;
-        }
-
-        stringRedisTemplate.opsForValue().set(key,JSONUtil.toJsonStr(byId),CACHE_SHOP_TTL,TimeUnit.MINUTES);
-
-        unLock(lockKey);
 
         return byId;
     }
