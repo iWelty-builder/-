@@ -2,6 +2,8 @@ package com.hmdp.service.impl;
 
 import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSON;
+import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Shop;
@@ -10,11 +12,16 @@ import com.hmdp.service.IShopService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 
 
+import com.hmdp.utils.CacheClient;
+import com.hmdp.utils.RedisData;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 
+import java.time.LocalDateTime;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static com.hmdp.utils.RedisConstants.*;
@@ -33,11 +40,18 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+    @Resource
+    private CacheClient cacheClient;
 
     @Override
     public Result queryById(Long id) throws InterruptedException {
 
-        Shop shop = queryWithBreakDown(id);
+//        Shop shop = cacheClient.queryWithBreakDown(CACHE_SHOP_KEY, id, Shop.class, this::getById, CACHE_SHOP_TTL, TimeUnit.MINUTES);
+
+//        Shop shop = queryWithLogicExpire(id);
+
+         Shop shop = cacheClient
+                .queryWithLogicExpire(CACHE_SHOP_KEY, id, Shop.class, this::getById, 20L, TimeUnit.SECONDS);
 
         if (shop == null){
             return Result.fail("SHOP IS NOT EXIST");
@@ -46,80 +60,51 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         return Result.ok(shop);
     }
 
-    public Shop queryWithPenetration(Long id) throws InterruptedException {
-        String key = CACHE_SHOP_KEY + id;
-
-        String shopJson = stringRedisTemplate.opsForValue().get(key);
-
-        if (!StrUtil.isBlank(shopJson)) {
-            return JSONUtil.toBean(shopJson, Shop.class);
-        }
-
-        if (shopJson != null){
-            return null;
-        }
-
-        Shop byId = getById(id);
 
 
-        if (byId == null) {
-            stringRedisTemplate.opsForValue().set(key,"",CACHE_NULL_TTL,TimeUnit.MINUTES);
-            return null;
-        }
 
-        stringRedisTemplate.opsForValue().set(key,JSONUtil.toJsonStr(byId),CACHE_SHOP_TTL,TimeUnit.MINUTES);
 
-        return byId;
-    }
 
-    public Shop queryWithBreakDown(Long id) throws InterruptedException {
-        String key = CACHE_SHOP_KEY + id;
+//    public Shop queryWithBreakDown(Long id) throws InterruptedException {
+//        String key = CACHE_SHOP_KEY + id;
+//
+//        String shopJson = stringRedisTemplate.opsForValue().get(key);
+//        if (!StrUtil.isBlank(shopJson)) {
+//            return JSONUtil.toBean(shopJson, Shop.class);
+//        }
+//
+//        if (shopJson != null) {
+//            return null;
+//        }
+//
+//        String lockKey = "lock:shop:" + id;
+//
+//        Shop byId;
+//        try {
+//            boolean triedLock = tryLock(lockKey);
+//
+//            if (!triedLock) {
+//                Thread.sleep(50);
+//                return queryWithBreakDown(id);
+//            }
+//
+//            byId = getById(id);
+//
+//            if (byId == null) {
+//                stringRedisTemplate.opsForValue().set(key, "", CACHE_NULL_TTL, TimeUnit.MINUTES);
+//                return null;
+//            }
+//
+//            stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(byId), CACHE_SHOP_TTL, TimeUnit.MINUTES);
+//        } catch (InterruptedException e) {
+//            throw new RuntimeException(e);
+//        } finally {
+//            unLock(lockKey);
+//        }
+//
+//        return byId;
+//    }
 
-        String shopJson = stringRedisTemplate.opsForValue().get(key);
-        if (!StrUtil.isBlank(shopJson)) {
-            return JSONUtil.toBean(shopJson, Shop.class);
-        }
-
-        if (shopJson != null) {
-            return null;
-        }
-
-        String lockKey = "lock:shop:" + id;
-
-        Shop byId;
-        try {
-            boolean triedLock = tryLock(lockKey);
-
-            if (!triedLock) {
-                Thread.sleep(50);
-                return queryWithBreakDown(id);
-            }
-
-            byId = getById(id);
-
-            if (byId == null) {
-                stringRedisTemplate.opsForValue().set(key, "", CACHE_NULL_TTL, TimeUnit.MINUTES);
-                return null;
-            }
-
-            stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(byId), CACHE_SHOP_TTL, TimeUnit.MINUTES);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } finally {
-            unLock(lockKey);
-        }
-
-        return byId;
-    }
-
-    private boolean tryLock(String key){
-        Boolean flag = stringRedisTemplate.opsForValue().setIfAbsent(key,"1",10,TimeUnit.SECONDS);
-        return BooleanUtil.isTrue(flag);
-    }
-
-    public void unLock(String key){
-        stringRedisTemplate.delete(key);
-    }
 
     @Override
     public Result update(Shop shop) {
