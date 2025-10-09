@@ -2,15 +2,21 @@ package com.hmdp.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
+import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Voucher;
+import com.hmdp.entity.VoucherOrder;
 import com.hmdp.mapper.VoucherMapper;
 import com.hmdp.entity.SeckillVoucher;
 import com.hmdp.service.ISeckillVoucherService;
+import com.hmdp.service.IVoucherOrderService;
 import com.hmdp.service.IVoucherService;
+import com.hmdp.utils.RedisIdWorker;
+import com.hmdp.utils.UserHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -26,6 +32,10 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
 
     @Resource
     private ISeckillVoucherService seckillVoucherService;
+    @Resource
+    private IVoucherOrderService iVoucherOrderService;
+    @Resource
+    RedisIdWorker redisIdWorker;
 
     @Override
     public Result queryVoucherOfShop(Long shopId) {
@@ -47,5 +57,49 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
         seckillVoucher.setBeginTime(voucher.getBeginTime());
         seckillVoucher.setEndTime(voucher.getEndTime());
         seckillVoucherService.save(seckillVoucher);
+    }
+
+    @Override
+    @Transactional
+    public Result seckillVocher(Long voucherId) {
+        SeckillVoucher seckillVoucher = seckillVoucherService.getById(voucherId);
+
+        if (seckillVoucher.getBeginTime().isAfter(LocalDateTime.now())){
+            return Result.fail("FLASH SALE HAVEN'T START !!!");
+        }
+        if (seckillVoucher.getEndTime().isBefore(LocalDateTime.now())){
+            return Result.fail("FLASH SALE HAVE END !!!");
+        }
+
+        //Judge whether the goods are haven't sold out.
+        if (!(seckillVoucher.getStock() > 1)) {
+            return Result.fail("SORRY THIS VOUCHER HAVE SOLD OUT !!!");
+        }
+//        seckillVoucher.setStock(seckillVoucher.getStock() - 1);
+//        seckillVoucher.setUpdateTime(LocalDateTime.now());
+//        seckillVoucherService.updateById(seckillVoucher);
+        boolean b = seckillVoucherService.update()
+                .setSql("stock = stock - 1")
+                .eq("voucher_id", voucherId)
+                .update();
+
+        if (!b){
+            return Result.fail("INSUFFICIENT STOCK");
+        }
+        VoucherOrder voucherOrder = new VoucherOrder();
+
+        //Order Id
+        long id = redisIdWorker.nextId("order");
+        //User Id
+        UserDTO user = UserHolder.getUser();
+        Long userId = user.getId();
+        //voucherID already get
+        voucherOrder.setId(id);
+        voucherOrder.setUserId(userId);
+        voucherOrder.setVoucherId(voucherId);
+
+        iVoucherOrderService.save(voucherOrder);
+
+        return Result.ok(id);
     }
 }
