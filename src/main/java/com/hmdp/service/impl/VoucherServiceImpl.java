@@ -1,5 +1,6 @@
 package com.hmdp.service.impl;
 
+import com.baomidou.mybatisplus.core.injector.methods.SelectById;
 import com.baomidou.mybatisplus.extension.conditions.query.QueryChainWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
@@ -12,8 +13,11 @@ import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.hmdp.service.IVoucherService;
 import com.hmdp.utils.RedisIdWorker;
+import com.hmdp.utils.SimpleRedisLock;
 import com.hmdp.utils.UserHolder;
+import org.apache.ibatis.annotations.Select;
 import org.springframework.aop.framework.AopContext;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,6 +42,8 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
     private IVoucherOrderService iVoucherOrderService;
     @Resource
     RedisIdWorker redisIdWorker;
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
 
     @Override
     public Result queryVoucherOfShop(Long shopId) {
@@ -80,12 +86,23 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
 //        seckillVoucher.setUpdateTime(LocalDateTime.now());
 //        seckillVoucherService.updateById(seckillVoucher);
         Long userId = UserHolder.getUser().getId();
-        synchronized (userId.toString().intern()) {
-            //添加AspectJ Weaver 依赖 并在启动类上添加@EnableAspectJAutoProxy注解，并将exposeProxy属性设置为true
-            //获取代理对象（事务）
+//        synchronized (userId.toString().intern()) {
+//            //添加AspectJ Weaver 依赖 并在启动类上添加@EnableAspectJAutoProxy注解，并将exposeProxy属性设置为true
+//            //获取代理对象（事务）
+        SimpleRedisLock lock = new SimpleRedisLock("order" + userId, stringRedisTemplate);
+
+        boolean isLock = lock.tryLock(1200);
+
+        if (!isLock) {
+            return Result.fail("One Person One Flash Sale Voucher");
+        }
+        try {
             IVoucherService proxy = (IVoucherService) AopContext.currentProxy();
             return proxy.createVoucherOrder(voucherId);
+        } finally {
+            lock.unlock();
         }
+//        }
     }
 
     @Transactional
