@@ -4,6 +4,7 @@ package com.hmdp.controller;
 import com.baomidou.mybatisplus.core.injector.methods.SelectById;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Voucher;
+import com.hmdp.service.IVoucherOrderService;
 import com.hmdp.service.IVoucherService;
 import org.apache.ibatis.annotations.Select;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,10 +28,10 @@ import javax.annotation.Resource;
 public class VoucherOrderController {
 
    @Resource
-   private IVoucherService iVoucherService;
+   private IVoucherOrderService iVoucherOrderService;
 
     @PostMapping("seckill/{id}")
     public Result seckillVoucher(@PathVariable("id") Long voucherId) {
-      return iVoucherService.seckillVocher(voucherId);
+      return iVoucherOrderService.seckillVoucher(voucherId);
     }
 }
