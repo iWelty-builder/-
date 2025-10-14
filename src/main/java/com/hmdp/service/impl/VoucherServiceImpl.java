@@ -3,6 +3,7 @@ package com.hmdp.service.impl;
 import com.baomidou.mybatisplus.core.injector.methods.SelectById;
 import com.baomidou.mybatisplus.extension.conditions.query.QueryChainWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.config.RedissonConfig;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Voucher;
@@ -16,6 +17,8 @@ import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.SimpleRedisLock;
 import com.hmdp.utils.UserHolder;
 import org.apache.ibatis.annotations.Select;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -24,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * <p>
@@ -44,6 +48,8 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
     RedisIdWorker redisIdWorker;
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+    @Resource
+    private RedissonClient redissonClient;
 
     @Override
     public Result queryVoucherOfShop(Long shopId) {
@@ -89,9 +95,10 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
 //        synchronized (userId.toString().intern()) {
 //            //添加AspectJ Weaver 依赖 并在启动类上添加@EnableAspectJAutoProxy注解，并将exposeProxy属性设置为true
 //            //获取代理对象（事务）
-        SimpleRedisLock lock = new SimpleRedisLock("order" + userId, stringRedisTemplate);
+//        SimpleRedisLock lock = new SimpleRedisLock("order" + userId, stringRedisTemplate);
+        RLock lock = redissonClient.getLock("lock:order" + userId);
 
-        boolean isLock = lock.tryLock(1200);
+        boolean isLock = lock.tryLock();
 
         if (!isLock) {
             return Result.fail("One Person One Flash Sale Voucher");
