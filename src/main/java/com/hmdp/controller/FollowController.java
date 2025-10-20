@@ -2,10 +2,13 @@ package com.hmdp.controller;
 
 
 import com.hmdp.dto.Result;
+import com.hmdp.dto.UserDTO;
 import com.hmdp.service.IFollowService;
 import org.springframework.web.bind.annotation.*;
+import org.yaml.snakeyaml.events.Event;
 
 import javax.annotation.Resource;
+import java.util.List;
 
 /**
  * <p>
@@ -30,4 +33,10 @@ public class FollowController {
     public Result isFollow(@PathVariable Long id){
         return iFollowService.isFollow(id);
     }
+
+    @GetMapping("/common/{id}")
+    public Result common(@PathVariable Long id){
+        return iFollowService.common(id);
+    }
+
 }
